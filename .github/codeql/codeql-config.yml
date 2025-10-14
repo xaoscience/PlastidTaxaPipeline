@@ -1,0 +1,84 @@
+name: "CodeQL Analysis + R lint"
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  schedule:
+    - cron: '39 6 * * 6'
+
+jobs:
+  # CodeQL analysis for supported languages
+  analyze:
+    name: CodeQL Analyze (${{ matrix.language }})
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Keep C/C++ if your repo contains native code
+          - language: c-cpp
+            build-mode: autobuild
+          # JavaScript / TypeScript - common for web frontends
+          - language: javascript-typescript
+            build-mode: none
+          # Python - run CodeQL for python sources
+          - language: python
+            build-mode: none
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          # matrix.language is one of the languages above
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # Use the canonical query set for security and quality
+          queries: security-and-quality
+
+      - if: matrix.build-mode == 'manual'
+        shell: bash
+        run: |
+          echo 'Manual build required'
+          exit 1
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
+
+  # R-specific linting / static checks (CodeQL does not support R)
+  r-lint:
+    name: R lint and static checks
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup R (r-base) and install lintr
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends r-base r-base-dev
+          R -e "install.packages('lintr', repos='https://cloud.r-project.org/')"
+
+      - name: Run lintr across R files
+        run: |
+          R -e "lintr::lint_dir('')" || true
+
+      - name: Run R CMD check for package dirs (if applicable)
+        run: |
+          # If you maintain an R package in the repo, run R CMD check on it.
+          if [ -f DESCRIPTION ]; then
+            R CMD check . --no-vignettes || true
+          else
+            echo 'No R package DESCRIPTION found — skipping R CMD check'
+          fi
