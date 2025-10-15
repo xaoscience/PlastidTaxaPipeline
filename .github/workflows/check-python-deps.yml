@@ -19,12 +19,15 @@ jobs:
         id: python
         run: |
           VERSION=$(cat runtime.txt | sed 's/python-//')
+          # Extract major.minor for setup-python (e.g., 3.12.13 -> 3.12)
+          MAJOR_MINOR=$(echo $VERSION | cut -d. -f1-2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "major-minor=$MAJOR_MINOR" >> $GITHUB_OUTPUT
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v4
         with:
-          python-version: ${{ steps.python.outputs.version }}
+          python-version: ${{ steps.python.outputs.major-minor }}
 
       - name: Check for dependency updates
         id: check
