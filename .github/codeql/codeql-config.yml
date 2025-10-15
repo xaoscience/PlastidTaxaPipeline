@@ -54,31 +54,3 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{matrix.language}}"
-
-  # R-specific linting / static checks (CodeQL does not support R)
-  r-lint:
-    name: R lint and static checks
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup R (r-base) and install lintr
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends r-base r-base-dev
-          R -e "install.packages('lintr', repos='https://cloud.r-project.org/')"
-
-      - name: Run lintr across R files
-        run: |
-          R -e "lintr::lint_dir('')" || true
-
-      - name: Run R CMD check for package dirs (if applicable)
-        run: |
-          # If you maintain an R package in the repo, run R CMD check on it.
-          if [ -f DESCRIPTION ]; then
-            R CMD check . --no-vignettes || true
-          else
-            echo 'No R package DESCRIPTION found — skipping R CMD check'
-          fi

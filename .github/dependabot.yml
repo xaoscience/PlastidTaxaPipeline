@@ -3,19 +3,6 @@
 
 version: 2
 updates:
-  # Update Docker base images in devcontainer
-  - package-ecosystem: "docker"
-    directory: "/.devcontainer/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "docker"
-    commit-message:
-      prefix: "chore(deps)"
-      prefix-development: "chore(deps-dev)"
 
   # Update Python dependencies in requirements files
   - package-ecosystem: "pip"
