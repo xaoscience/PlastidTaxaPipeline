@@ -1,0 +1,75 @@
+name: Bump .python-version
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1' # weekly on Monday at 06:00 UTC
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Get latest stable Python 3.x
+        id: get_latest
+        run: |
+          python - <<'PY'
+          import json,urllib.request,re
+          url='https://www.python.org/doc/versions/'
+          data=urllib.request.urlopen('https://www.python.org/downloads/').read().decode()
+          # Find latest 3.x release like 'Latest Python 3 Release - Python 3.12.13'
+          m=re.search(r'Latest Python 3 Release - Python ([0-9]+\.[0-9]+\.[0-9]+)',data)
+          if m:
+              print(m.group(1))
+          else:
+              # fallback: query downloads JSON
+              data=urllib.request.urlopen('https://www.python.org/doc/versions/json/').read().decode()
+              j=json.loads(data)
+              releases=[v for v in j if v.get('series','').startswith('3')]
+              releases=sorted(releases, key=lambda x: x['version'], reverse=True)
+              print(releases[0]['version'])
+          
+      - name: Show latest
+        run: echo "Latest Python: ${{ steps.get_latest.outputs.stdout }}"
+
+      - name: Compare and update .python-version
+        run: |
+          LATEST=$(python - <<'PY'
+import re,urllib.request
+data=urllib.request.urlopen('https://www.python.org/downloads/').read().decode()
+import sys
+m=re.search(r'Latest Python 3 Release - Python ([0-9]+\.[0-9]+\.[0-9]+)',data)
+print(m.group(1) if m else '')
+PY
+)
+          echo "Latest=$LATEST"
+          if [ -z "$LATEST" ]; then
+            echo "No latest version detected; exiting"
+            exit 0
+          fi
+          if [ -f .python-version ]; then
+            CUR=$(cat .python-version)
+          else
+            CUR=""
+          fi
+          echo "Current=$CUR"
+          if [ "$CUR" != "$LATEST" ]; then
+            echo "$LATEST" > .python-version
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add .python-version
+            git commit -m "chore: bump .python-version to $LATEST" || true
+            git push origin HEAD:refs/heads/bump-python-version || true
+            gh pr create --title "chore: bump .python-version to $LATEST" --body "This PR updates .python-version to $LATEST" --base master --head bump-python-version || true
+          else
+            echo ".python-version already up to date"
+          fi

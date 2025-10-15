@@ -19,7 +19,6 @@ updates:
       prefix-development: "chore(deps-dev)"
     versioning-strategy: "increase-if-necessary"
     groups:
-      # Group Python data science packages together
       data-science:
         patterns:
           - "numpy"
@@ -28,14 +27,21 @@ updates:
           - "matplotlib"
           - "seaborn"
           - "plotly"
-      # Group bioinformatics packages
       bioinformatics:
         patterns:
           - "biopython"
           - "rpy2"
-      # Group Jupyter packages
       jupyter:
         patterns:
           - "jupyter*"
           - "notebook"
           - "ipython"
+  # Keep GitHub Actions workflow action versions up to date (including setup-python)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
