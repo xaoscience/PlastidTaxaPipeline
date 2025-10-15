@@ -2,19 +2,19 @@
 # Bioinformatics and data analysis packages
 
 # Core scientific computing
-numpy
-scipy
-pandas
+numpy==2.3.4
+scipy==1.16.2
+pandas==2.3.3
 
 # Visualization
-matplotlib
-seaborn
-plotly
+matplotlib==3.10.7
+seaborn==0.13.2
+plotly==6.3.1
 
 # Jupyter environment
-jupyter
-notebook
-ipython
+jupyter==1.0.0
+notebook==7.4.0
+ipython==9.6.0
 
 # R integration
 
@@ -23,7 +23,7 @@ ipython
 # top-level requirements so CI dependency resolution doesn't need R.
 
 # Bioinformatics
-biopython
+biopython==1.84
 
 # Machine learning (optional, for future analyses)
-scikit-learn
+scikit-learn==1.7.2
