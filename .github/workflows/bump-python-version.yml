@@ -14,62 +14,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-
-      - name: Get latest stable Python 3.x
+      - name: Get latest Python 3.x release
         id: get_latest
         run: |
-          python - <<'PY'
-          import json,urllib.request,re
-          url='https://www.python.org/doc/versions/'
-          data=urllib.request.urlopen('https://www.python.org/downloads/').read().decode()
-          # Find latest 3.x release like 'Latest Python 3 Release - Python 3.12.13'
-          m=re.search(r'Latest Python 3 Release - Python ([0-9]+\.[0-9]+\.[0-9]+)',data)
-          if m:
-              print(m.group(1))
-          else:
-              # fallback: query downloads JSON
-              data=urllib.request.urlopen('https://www.python.org/doc/versions/json/').read().decode()
-              j=json.loads(data)
-              releases=[v for v in j if v.get('series','').startswith('3')]
-              releases=sorted(releases, key=lambda x: x['version'], reverse=True)
-              print(releases[0]['version'])
-          
-      - name: Show latest
-        run: echo "Latest Python: ${{ steps.get_latest.outputs.stdout }}"
+          curl -s https://www.python.org/downloads/ | grep -oP 'Latest Python 3 Release - Python \K[0-9]+\.[0-9]+\.[0-9]+' | head -1 > /tmp/latest.txt
+          LATEST=$(cat /tmp/latest.txt)
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
 
-      - name: Compare and update .python-version
+      - name: Update .python-version if changed
         run: |
-          LATEST=$(python - <<'PY'
-import re,urllib.request
-data=urllib.request.urlopen('https://www.python.org/downloads/').read().decode()
-import sys
-m=re.search(r'Latest Python 3 Release - Python ([0-9]+\.[0-9]+\.[0-9]+)',data)
-print(m.group(1) if m else '')
-PY
-)
-          echo "Latest=$LATEST"
+          LATEST="${{ steps.get_latest.outputs.latest }}"
           if [ -z "$LATEST" ]; then
-            echo "No latest version detected; exiting"
-            exit 0
+            echo "Failed to detect latest Python version; exiting"
+            exit 1
           fi
-          if [ -f .python-version ]; then
-            CUR=$(cat .python-version)
-          else
-            CUR=""
-          fi
-          echo "Current=$CUR"
+          CUR=$(cat .python-version 2>/dev/null || echo "")
           if [ "$CUR" != "$LATEST" ]; then
             echo "$LATEST" > .python-version
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add .python-version
             git commit -m "chore: bump .python-version to $LATEST" || true
-            git push origin HEAD:refs/heads/bump-python-version || true
-            gh pr create --title "chore: bump .python-version to $LATEST" --body "This PR updates .python-version to $LATEST" --base master --head bump-python-version || true
           else
-            echo ".python-version already up to date"
+            echo ".python-version already at $LATEST"
           fi
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump .python-version to ${{ steps.get_latest.outputs.latest }}"
+          committer: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          title: "chore: bump .python-version to ${{ steps.get_latest.outputs.latest }}"
+          body: "Updates .python-version to latest stable Python 3.x"
+          base: master
+          branch: "bump-python-version-${{ steps.get_latest.outputs.latest }}"
