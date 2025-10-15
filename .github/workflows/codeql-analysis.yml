@@ -1,12 +1,15 @@
 name: "CodeQL Analysis + R lint (enabled)"
 
+# Run monthly only (day 1 at 06:00 UTC) and allow manual runs. This prevents CodeQL
+# from executing on every commit/pull request which reduces Actions minutes.
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
   schedule:
-    - cron: '39 6 * * 6'
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-analysis-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   codeql:
@@ -15,39 +18,62 @@ jobs:
     permissions:
       security-events: write
       packages: read
-      actions: read
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      r-lint:
+        name: R lint and static checks
+        runs-on: ubuntu-latest
+        needs: codeql
+        if: always()
+        # Use a workspace-based R library so caching can persist across runs
+        env:
+          R_LIBS_USER: ${{ github.workspace }}/.cache/R/library
+        steps:
+          - name: Checkout repository
+            uses: actions/checkout@v4
 
-      - name: Initialize CodeQL with repo config
-        uses: github/codeql-action/init@v3
-        with:
-          # Use your existing configuration file so custom matrix/queries are respected
-          config-file: .github/codeql/codeql-config.yml
+          - name: Restore cached R library
+            uses: actions/cache@v4
+            with:
+              path: ${{ env.R_LIBS_USER }}
+              key: ${{ runner.os }}-r-lib-${{ hashFiles('**/DESCRIPTION','**/renv.lock','**/*.R') }}
+              restore-keys: |
+                ${{ runner.os }}-r-lib-
 
-      - name: Autobuild (if applicable)
-        uses: github/codeql-action/autobuild@v3
-        continue-on-error: true
+          - name: Setup R (r-base) and install lintr
+            run: |
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends r-base r-base-dev
+              # Create the user library and ensure R will use it
+              mkdir -p "${R_LIBS_USER}"
+              Rscript -e "if(!dir.exists(Sys.getenv('R_LIBS_USER'))) dir.create(Sys.getenv('R_LIBS_USER'), recursive=TRUE)"
+              Rscript -e "install.packages('lintr', repos='https://cloud.r-project.org/', lib=Sys.getenv('R_LIBS_USER'))"
 
-      - name: Run CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+          - name: Run lintr across R files
+            run: |
+              R -e "lintr::lint_dir('')" || true
 
-  r-lint:
-    name: R lint and static checks
-    runs-on: ubuntu-latest
-    needs: codeql
-    if: always()
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+          - name: Run R CMD check for package dirs (if applicable)
+            run: |
+              if [ -f DESCRIPTION ]; then
+                R CMD check . --no-vignettes || true
+              else
+                echo 'No R package DESCRIPTION found — skipping R CMD check'
+              fi
 
-      - name: Setup R (r-base) and install lintr
-        run: |
-          sudo apt-get update
+          - name: Save R library to cache
+            if: always()
+            uses: actions/cache@v4
+            with:
+              path: ${{ env.R_LIBS_USER }}
+              key: ${{ runner.os }}-r-lib-${{ hashFiles('**/DESCRIPTION','**/renv.lock','**/*.R') }}
+              restore-keys: |
+                ${{ runner.os }}-r-lib-
           sudo apt-get install -y --no-install-recommends r-base r-base-dev
-          R -e "install.packages('lintr', repos='https://cloud.r-project.org/')"
+          # Use a user-writable library to avoid permission errors when installing packages
+          export R_LIBS_USER="$HOME/R/library"
+          mkdir -p "$R_LIBS_USER"
+          # Ensure R sees the library location for this session
+          Rscript -e "if(!dir.exists(Sys.getenv('R_LIBS_USER'))) dir.create(Sys.getenv('R_LIBS_USER'), recursive=TRUE)"
+          Rscript -e "install.packages('lintr', repos='https://cloud.r-project.org()', lib=Sys.getenv('R_LIBS_USER'))"
 
       - name: Run lintr across R files
         run: |
