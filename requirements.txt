@@ -23,7 +23,7 @@ ipython==9.6.0
 # top-level requirements so CI dependency resolution doesn't need R.
 
 # Bioinformatics
-biopython==1.85
+biopython==1.86
 
 # Machine learning (optional, for future analyses)
 scikit-learn==1.7.2
