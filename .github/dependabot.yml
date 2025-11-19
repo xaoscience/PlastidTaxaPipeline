@@ -9,14 +9,17 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      timezone: "UTC"
       day: "monday"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "python"
+      - "automerge"
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
+      include: "scope"
     versioning-strategy: "increase-if-necessary"
     groups:
       data-science:
@@ -41,7 +44,13 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      timezone: "UTC"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "github-actions"
+      - "automerge"
+    rebase-strategy: "disabled"
+    commit-message:
+      prefix: "deps"
+      include: "scope"

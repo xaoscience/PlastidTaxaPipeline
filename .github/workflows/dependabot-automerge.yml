@@ -1,0 +1,14 @@
+name: Dependabot Auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, labeled, synchronize]
+
+jobs:
+  automerge:
+    uses: xaoscience/github-workflows/.github/workflows/dependabot-automerge-reusable.yml@main
+    secrets:
+      AUTOMERGE_PAT: ${{ secrets.AUTOMERGE_PAT }}
+    with:
+      merge_method: squash
+      require_label: true
