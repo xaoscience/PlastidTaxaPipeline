@@ -3,12 +3,97 @@ name: Dependabot Auto-merge
 on:
   pull_request_target:
     types: [opened, reopened, labeled, synchronize]
+  workflow_dispatch:
+    inputs:
+      pull_number:
+        description: 'PR number to merge (optional - used for manual test runs)'
+        required: false
+        type: string
 
 jobs:
-  automerge:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.check.outputs.pr_number }}
+      is_dependabot: ${{ steps.check.outputs.is_dependabot }}
+      has_automerge_label: ${{ steps.check.outputs.has_automerge_label }}
+      should_merge: ${{ steps.check.outputs.should_merge }}
+    steps:
+      - name: Inspect PR author/labels
+        id: check
+        uses: actions/github-script@v6
+        env:
+          PULL_NUMBER: ${{ github.event.inputs.pull_number }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            // Resolve PR number from workflow_dispatch input or event context
+            let prNumber = null;
+            if (process.env.PULL_NUMBER) {
+              prNumber = parseInt(process.env.PULL_NUMBER, 10);
+            } else if (context.payload.pull_request && context.payload.pull_request.number) {
+              prNumber = context.payload.pull_request.number;
+            } else if (context.eventName === 'workflow_dispatch' && context.payload.inputs && context.payload.inputs.pull_number) {
+              prNumber = parseInt(context.payload.inputs.pull_number, 10);
+            }
+            if (!prNumber) {
+              core.info('No PR number found in context or inputs.');
+              core.setOutput('pr_number', '');
+              core.setOutput('is_dependabot', 'false');
+              core.setOutput('has_automerge_label', 'false');
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+
+            const prRes = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+            const pr = prRes.data;
+            const author = pr.user && pr.user.login;
+            const labels = (pr.labels || []).map(l => l.name);
+
+            const isDependabot = !!author && (author === 'dependabot[bot]' || author.toLowerCase().includes('dependabot'));
+            const hasAutomergeLabel = labels.includes('automerge') || labels.includes('dependabot/automerge') || labels.includes('auto-merge');
+
+            core.info(`PR #${prNumber} author=${author} isDependabot=${isDependabot} labels=${labels.join(',')}`);
+
+            core.setOutput('pr_number', String(prNumber));
+            core.setOutput('is_dependabot', String(isDependabot));
+            core.setOutput('has_automerge_label', String(hasAutomergeLabel));
+            core.setOutput('should_merge', String(isDependabot || hasAutomergeLabel));
+
+  automerge_dependabot:
+    needs: guard
+    if: needs.guard.outputs.is_dependabot == 'true'
     uses: xaoscience/github-workflows/.github/workflows/dependabot-automerge-reusable.yml@main
     secrets:
       AUTOMERGE_PAT: ${{ secrets.AUTOMERGE_PAT }}
     with:
       merge_method: squash
-      require_label: true
+      require_label: false
+      pull_number: ${{ needs.guard.outputs.pr_number }}
+
+  merge_labeled_pr:
+    needs: guard
+    if: needs.guard.outputs.is_dependabot == 'false' && needs.guard.outputs.has_automerge_label == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge PR with automerge label (non-Dependabot author)
+        uses: actions/github-script@v6
+        env:
+          PR_NUMBER: ${{ needs.guard.outputs.pr_number }}
+        with:
+          github-token: ${{ secrets.AUTOMERGE_PAT }}
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = parseInt(process.env.PR_NUMBER, 10);
+            if (!pull_number) {
+              core.setFailed('No PR number available to merge.');
+              return;
+            }
+            core.info(`Merging PR #${pull_number} using PAT`);
+            try {
+              const res = await github.rest.pulls.merge({ owner, repo, pull_number, merge_method: 'squash' });
+              core.info(`Merge result: ${JSON.stringify(res.data)}`);
+            } catch (error) {
+              core.setFailed(`Merge failed: ${error.message}`);
+            }
